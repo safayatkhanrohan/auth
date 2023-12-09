@@ -2,11 +2,13 @@
 const mongoose = require("mongoose");
 const express = require("express");
 const bodyParser = require("body-parser");
-
+const dotenv = require("dotenv").config();
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const passport = require("passport");
+
 const session = require("express-session");
 const passportLocalMongoose = require("passport-local-mongoose");
-
+const findOrCreate = require('mongoose-findorcreate');
 const ejs = require("ejs");
 
 const app = express();
@@ -34,20 +36,71 @@ async function connectDB() {
 const userSchema = new mongoose.Schema({
   username: String,
   password: String,
+  googleId: String,
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
+
 
 const User = mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
 
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+// passport.serializeUser(User.serializeUser());
+// passport.deserializeUser(User.deserializeUser());
+
+passport.serializeUser(function (user, cb) {
+  process.nextTick(function () {
+    return cb(null, {
+      username: user.username,
+      password: user.password,
+    });
+  });
+});
+
+passport.deserializeUser(function (user, cb) {
+  process.nextTick(function () {
+    return cb(null, user);
+  });
+});
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrects",
+    },
+    function (accessToken, refreshToken, profile, cb) {
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
+
+
 
 app.get("/", function (req, res) {
   res.render("home");
 });
+
+
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] }));
+
+
+
+  app.get('/auth/google/secrects', 
+  passport.authenticate('google', { failureRedirect: '/register' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
+
+
 
 app.get("/login", function (req, res) {
   res.render("login");
@@ -97,13 +150,13 @@ app.post("/login", function (req, res) {
   });
 });
 
-app.get('/logout', function(req, res, next){
-  req.logout(function(err) {
-    if (err) { 
+app.get("/logout", function (req, res, next) {
+  req.logout(function (err) {
+    if (err) {
       console.log(err);
-     } else {
-      res.redirect('/');
-     }
+    } else {
+      res.redirect("/");
+    }
   });
 });
 
